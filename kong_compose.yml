@@ -1,0 +1,78 @@
+version: "3.8"
+
+networks:
+  kong-net:
+    driver: bridge
+
+services:
+  # Create Kong database
+  kong-database:
+    image: postgres:9.6
+    networks:
+      - kong-net
+    environment:
+      - POSTGRES_USER=kong
+      - POSTGRES_DB=kong
+      - POSTGRES_PASSWORD=kong
+    volumes:
+      - .data-kong-database:/var/lib/postgresql/data
+    restart: on-failure
+
+  # Run Kong migrations
+  kong-migrations:
+    image: kong/kong-gateway:3.0.0.0-alpine
+    networks:
+      - kong-net
+    environment:
+      - KONG_DATABASE=postgres
+      - KONG_PG_HOST=kong-database
+      - KONG_PG_USER=kong
+      - KONG_PG_PASSWORD=kong
+      - KONG_PG_DATABASE=kong
+    depends_on:
+      - kong-database
+    command: kong migrations bootstrap
+    restart: on-failure
+
+  # Create kong service
+  kong:
+    image: kong/kong-gateway:3.0.0.0-alpine
+    networks:
+      - kong-net
+    depends_on:
+      - kong-database
+    environment:
+      - KONG_DATABASE=postgres
+      - KONG_PG_HOST=kong-database
+      - KONG_PG_USER=kong
+      - KONG_PG_PASSWORD=kong
+      - KONG_PG_DATABASE=kong
+      - KONG_PROXY_ACCESS_LOG=/dev/stdout
+      - KONG_ADMIN_ACCESS_LOG=/dev/stdout
+      - KONG_PROXY_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_LISTEN=0.0.0.0:8001
+    ports:
+      - 8000:8000
+      - 8443:8443
+      - 8001:8001
+      - 8444:8444
+    restart: on-failure
+
+  # Create Konga service
+  konga:
+    image: pantsel/konga
+    networks:
+      - kong-net
+    depends_on:
+      - kong
+    environment:
+      - DB_ADAPTER=postgres
+      - DB_HOST=kong-database
+      - DB_USER=kong
+      - DB_PASSWORD=kong
+      - DB_DATABASE=kong
+      - NODE_ENV=development
+    ports:
+      - 1337:1337
+    restart: on-failure
